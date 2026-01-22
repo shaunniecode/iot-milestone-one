@@ -1,0 +1,13 @@
+﻿.pio/
+.cache/
+build/
+libdeps/
+.vscode/
+*.pioenvs
+*.elf
+*.bin
+*.hex
+*.map
+.DS_Store
+Thumbs.db
+*.swp
