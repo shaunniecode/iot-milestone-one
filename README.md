@@ -84,3 +84,171 @@ purpose, not just “a demo sensor”.
 
 Base topic (device namespace):
 
+```
+dc/2780093K/shaun/esp32
+```
+
+I include:
+
+- `dc` (data centre prefix)
+- student id (`2780093K`)
+- username (`shaun`)
+- device type (`esp32`)
+
+This prevents topic collisions when multiple students/devices are used.
+
+### 6.1 Published topics (ESP32 → Broker)
+
+#### A) Status / Presence (LWT enabled)
+
+Topic:
+
+```
+dc/2780093K/shaun/esp32/status
+```
+
+Payloads:
+
+- `online` (published by ESP32 on successful MQTT connect; retained)
+- `offline` (published automatically by broker via LWT if ESP32 dies; retained)
+
+#### B) Events (instant, discrete changes)
+
+Topic:
+
+```
+dc/2780093K/shaun/esp32/event
+```
+
+Payload format: JSON
+
+Examples:
+
+```json
+{"event":"system","value":"online","ts":12345}
+{"event":"door","value":"OPEN","ts":12345}
+{"event":"alarm","value":"DOOR_ON","ts":12345}
+{"event":"alarm","value":"ENV_ON","ts":12345}
+{"event":"alarm","value":"POWER_ON","ts":12345}
+{"event":"ack","value":"shaun/2780093K ACK DOOR,ENV","ts":12345}
+```
+
+#### C) Telemetry (periodic snapshots)
+
+Topic:
+
+```
+dc/2780093K/shaun/esp32/telemetry
+```
+
+Publish interval:
+
+- Every `SENSOR_INTERVAL_MS` (60 seconds)
+
+### 6.2 Subscribed topics (Broker → ESP32)
+
+#### A) LED1 cooling fan control
+
+Topic:
+
+```
+dc/2780093K/shaun/esp32/cmd/led1
+```
+
+Payloads:
+
+- `ON`
+- `OFF`
+
+#### B) LED2 alarm control (kept for completeness)
+
+Topic:
+
+```
+dc/2780093K/shaun/esp32/cmd/led2
+```
+
+Payloads:
+
+- `ON`
+- `OFF`
+
+### 6.3 Wildcard subscription (monitor everything)
+
+Subscribe to:
+
+```
+dc/2780093K/shaun/esp32/#
+```
+
+## 7) Core design rule (why LED2 is stable)
+
+LED2 is controlled in **one place only**:
+
+- Door logic sets `doorAlarmActive` (latched)
+- DHT logic sets `envAlarmActive` (automatic)
+- Pot logic sets `powerAlarmActive` (automatic)
+
+Then:
+
+- LED2 = ON if **any** of those states are true
+
+## 8) How ACK works (and what it means)
+
+When I press Button 2:
+
+1. I publish an ACK event like:
+   - `"shaun/2780093K ACK DOOR,ENV"`
+2. I clear **only** `doorAlarmActive` (latched condition)
+3. `env` + `power` alarms remain active until conditions return to normal
+
+So:
+
+- MQTT **can** show multiple anomalies (ENV + POWER + DOOR) because transitions are
+  published as separate alarm events.
+- I **can** acknowledge multiple active alarms in one press because the ACK payload
+  lists everything active at that moment.
+- I **only clear** the DOOR alarm with ACK (by design).
+
+## 9) Running & testing (Wokwi + HiveMQ)
+
+1. Start Wokwi simulation and open Serial Monitor.
+2. In HiveMQ Web Client:
+   - Host: `broker.hivemq.com`
+   - Port: `1883`
+   - Subscribe: `dc/2780093K/shaun/esp32/#`
+
+### Test LED1
+
+- Publish to `dc/2780093K/shaun/esp32/cmd/led1` with `ON` or `OFF`.
+
+### Test door alarm
+
+- Button 1 press → `DOOR_ON`, LED2 on (latched)
+- Button 2 press → `DOOR_OFF`, LED2 off (if no other alarms)
+
+### Test env/power alarms
+
+- Change temp/humidity/pot and wait for the next 60s sensor interval for alarm
+  transitions (`ENV_ON/OFF`, `POWER_ON/OFF`).
+
+## 10) Quick reference
+
+**Broker**
+
+- `broker.hivemq.com:1883`
+
+**Wildcard subscribe**
+
+- `dc/2780093K/shaun/esp32/#`
+
+**Publish (cooling LED1)**
+
+- Topic: `dc/2780093K/shaun/esp32/cmd/led1`
+- Payload: `ON` / `OFF`
+
+**Published topics**
+
+- `dc/2780093K/shaun/esp32/status`
+- `dc/2780093K/shaun/esp32/event`
+- `dc/2780093K/shaun/esp32/telemetry`
