@@ -78,7 +78,7 @@ POWER_ALARM_PCT  = 80 %
 Host (HiveMQ public broker):
   broker.hivemq.com
 Port:
-  1883
+  8884
 
 ===============================================================================
 6) MQTT topic structure
@@ -198,7 +198,7 @@ Test env/power alarms:
 10) Quick reference
 ===============================================================================
 Broker:
-  broker.hivemq.com:1883
+  broker.hivemq.com:8884
 
 Wildcard subscribe:
   dc/2780093K/shaun/esp32/#
