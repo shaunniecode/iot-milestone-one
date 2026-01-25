@@ -232,6 +232,84 @@ So:
 - Change temp/humidity/pot and wait for the next 60s sensor interval for alarm
   transitions (`ENV_ON/OFF`, `POWER_ON/OFF`).
 
+## 11) Room device + multi-build workflow
+
+This repo now includes two builds:
+
+- Rack device (Shaun): `env:esp32dev`
+- Room device (Naren): `env:room`
+
+### Build both firmwares (PlatformIO)
+
+```bash
+pio run -e esp32dev
+pio run -e room
+```
+
+### Switch Wokwi config (rack vs room)
+
+Wokwi uses `diagram.json` + `wokwi.toml`. Use the helper to switch:
+
+```bat
+scripts\switch-wokwi.bat rack
+scripts\switch-wokwi.bat room
+```
+
+If you want both simulations running at the same time, open two VS Code
+windows on two copies of the repo.
+
+## 12) HiveMQ subscriptions and test publishes
+
+### Subscribe (everything for each device)
+
+```text
+dc/2780093K/shaun/esp32/#
+dc/5047992u/Naren/esp32/#
+```
+
+### Subscribe (minimal)
+
+```text
+dc/2780093K/shaun/esp32/status
+dc/2780093K/shaun/esp32/event
+dc/2780093K/shaun/esp32/telemetry
+dc/5047992u/Naren/esp32/telemetry
+dc/5047992u/Naren/esp32/alert/+
+```
+
+### Publish test commands
+
+Rack LED1 control:
+
+```text
+Topic: dc/2780093K/shaun/esp32/cmd/led1
+Payload: ON
+```
+
+Rack LED2 control:
+
+```text
+Topic: dc/2780093K/shaun/esp32/cmd/led2
+Payload: OFF
+```
+
+Room commands (JSON):
+
+```json
+{"led":"green","state":1}
+{"led":"yellow","state":0}
+{"led":"red","state":1}
+{"clear_fire":1}
+{"request_telemetry":1}
+{"request_status":1}
+```
+
+Room command topic:
+
+```text
+dc/5047992u/Naren/esp32/command
+```
+
 ## 10) Quick reference
 
 **Broker**
