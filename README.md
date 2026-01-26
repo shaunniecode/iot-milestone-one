@@ -277,6 +277,18 @@ dc/5047992u/Naren/esp32/telemetry
 dc/5047992u/Naren/esp32/alert/+
 ```
 
+### Example: Shaun MQTT appears in Naren output
+
+This happens because the room device subscribes to Shaun's rack topics
+(`dc/2780093K/shaun/esp32/status` and `dc/2780093K/shaun/esp32/event`)
+and logs all received messages.
+
+```text
+[MQTT TX] dc/5047992u/Naren/esp32/event : {"event":"rack_status","value":0,"ts":150}
+[1970-01-01 08:02:30] [MQTT RX] dc/2780093K/shaun/esp32/event : {"event":"system","value":"online","ts":2534588}
+[1970-01-01 08:02:31] [SENSOR] T:21.7C H:49.0% Smoke:0%
+```
+
 ### Publish test commands
 
 Rack LED1 control:
