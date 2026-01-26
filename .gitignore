@@ -11,3 +11,5 @@ libdeps/
 .DS_Store
 Thumbs.db
 *.swp
+diagram.json
+wokwi.toml
