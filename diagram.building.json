@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "author": "S RV (building)",
-  "editor": "wokwi",
+  "author": "S RV (fixed-minimal)",
+  "editor": "Wilson",
   "parts": [
     { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 0, "attrs": {} },
     {
@@ -52,13 +52,7 @@
       "attrs": { "value": "10000" }
     },
     { "type": "wokwi-potentiometer", "id": "pot1", "top": -78.1, "left": -201.8, "attrs": {} },
-    {
-      "type": "wokwi-dht22",
-      "id": "dht1",
-      "top": -114.9,
-      "left": -283.8,
-      "attrs": { "temperature": "59.1", "humidity": "74" }
-    },
+    { "type": "wokwi-dht22", "id": "dht1", "top": -114.9, "left": -283.8, "attrs": {} },
     {
       "type": "wokwi-resistor",
       "id": "r_dht",
