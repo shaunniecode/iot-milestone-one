@@ -234,29 +234,32 @@ So:
 
 ## 11) Room device + multi-build workflow
 
-This repo now includes two builds:
+This repo now includes three builds:
 
 - Rack device (Shaun): `env:esp32dev`
 - Room device (Naren): `env:room`
+- Building device (Sprinkler alarm): `env:building`
 
-### Build both firmwares (PlatformIO)
+### Build all firmwares (PlatformIO)
 
 ```bash
 pio run -e esp32dev
 pio run -e room
+pio run -e building
 ```
 
-### Switch Wokwi config (rack vs room)
+### Switch Wokwi config (rack vs room vs building)
 
 Wokwi uses `diagram.json` + `wokwi.toml`. Use the helper to switch:
 
 ```bat
 scripts\switch-wokwi.bat rack
 scripts\switch-wokwi.bat room
+scripts\switch-wokwi.bat building
 ```
 
-If you want both simulations running at the same time, open two VS Code
-windows on two copies of the repo.
+If you want multiple simulations running at the same time, open multiple VS Code
+windows on multiple copies of the repo.
 
 ## 12) HiveMQ subscriptions and test publishes
 

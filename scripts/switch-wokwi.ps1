@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet('rack','room')]
+  [ValidateSet('rack','room','building')]
   [string]$Mode
 )
 
@@ -8,15 +8,24 @@ $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path | Split-Path -Parent
 
-$files = if ($Mode -eq 'rack') {
-  @{
-    "diagram.json" = "diagram.rack.json";
-    "wokwi.toml"  = "wokwi.rack.toml";
+$files = switch ($Mode) {
+  'rack' {
+    @{
+      "diagram.json" = "diagram.rack.json";
+      "wokwi.toml"  = "wokwi.rack.toml";
+    }
   }
-} else {
-  @{
-    "diagram.json" = "diagram.room.json";
-    "wokwi.toml"  = "wokwi.room.toml";
+  'room' {
+    @{
+      "diagram.json" = "diagram.room.json";
+      "wokwi.toml"  = "wokwi.room.toml";
+    }
+  }
+  'building' {
+    @{
+      "diagram.json" = "diagram.building.json";
+      "wokwi.toml"  = "wokwi.building.toml";
+    }
   }
 }
 

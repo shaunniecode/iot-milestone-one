@@ -25,12 +25,21 @@ Explanation:
 - This builds the room‑level firmware (the Naren device).
 - The output is placed under `.pio/build/room/`.
 
+### Build the building device (Sprinkler alarm)
+Command:
+```powershell
+pio run -e building
+```
+Explanation:
+- This builds the building-level firmware (sprinkler alarm).
+- The output is placed under `.pio/build/building/`.
+
 If `pio` is not recognized, I use the PlatformIO sidebar in VS Code:
 PlatformIO → Project Tasks → esp32dev/room → Build.
 
 ---
 
-## 2) Switch Wokwi between rack and room
+## 2) Switch Wokwi between rack, room, and building
 
 Wokwi always uses `diagram.json` and `wokwi.toml`.  
 I created a helper so I can swap those files in one command.
@@ -55,18 +64,28 @@ Explanation:
 - Copies `wokwi.room.toml` → `wokwi.toml`
 - This makes Wokwi run the room device.
 
+### Switch to building
+Command:
+```bat
+scripts\switch-wokwi.bat building
+```
+Explanation:
+- Copies `diagram.building.json` → `diagram.json`
+- Copies `wokwi.building.toml` → `wokwi.toml`
+- This makes Wokwi run the building device.
+
 After switching, I stop the sim and start it again so Wokwi reloads.
 
 ---
 
-## 3) Can I run both sims at the same time?
+## 3) Can I run multiple sims at the same time?
 
 Not in a single workspace. Wokwi only uses one `diagram.json` and
 one `wokwi.toml` per project.
 
-If I want both running at once, I do this:
-- Open two VS Code windows on two copies of this repo.
-- Each window runs a different Wokwi config (rack vs room).
+If I want multiple running at once, I do this:
+- Open multiple VS Code windows on multiple copies of this repo.
+- Each window runs a different Wokwi config (rack vs room vs building).
 
 ---
 
