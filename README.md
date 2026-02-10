@@ -268,6 +268,7 @@ windows on multiple copies of the repo.
 ```text
 dc/2780093K/shaun/esp32/#
 dc/5047992u/Naren/esp32/#
+dc/2780093K/shaun/building/#
 ```
 
 ### Subscribe (minimal)
@@ -278,6 +279,9 @@ dc/2780093K/shaun/esp32/event
 dc/2780093K/shaun/esp32/telemetry
 dc/5047992u/Naren/esp32/telemetry
 dc/5047992u/Naren/esp32/alert/+
+dc/2780093K/shaun/building/status
+dc/2780093K/shaun/building/event
+dc/2780093K/shaun/building/telemetry
 ```
 
 ### Example: Shaun MQTT appears in Naren output
@@ -325,6 +329,36 @@ Room command topic:
 dc/5047992u/Naren/esp32/command
 ```
 
+Building published topics:
+
+```text
+dc/2780093K/shaun/building/status
+dc/2780093K/shaun/building/event
+dc/2780093K/shaun/building/telemetry
+```
+
+Building command topic:
+
+```text
+dc/2780093K/shaun/building/cmd
+```
+
+Building command payloads:
+```text
+TEST
+RESET
+```
+
+Example building payloads:
+```json
+{"event":"test","value":"ON","ts":123456}
+{"event":"reset","value":"PRESSED","ts":123789}
+{"event":"alarm","value":"ON","ts":124000}
+```
+```json
+{"temp_c":31.2,"humidity_pct":45.5,"tank_pct":72,"armed":1,"test_mode":0,"alarm":0,"ts":130000}
+```
+
 ## 10) Quick reference
 
 **Broker**
@@ -345,3 +379,6 @@ dc/5047992u/Naren/esp32/command
 - `dc/2780093K/shaun/esp32/status`
 - `dc/2780093K/shaun/esp32/event`
 - `dc/2780093K/shaun/esp32/telemetry`
+- `dc/2780093K/shaun/building/status`
+- `dc/2780093K/shaun/building/event`
+- `dc/2780093K/shaun/building/telemetry`

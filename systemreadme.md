@@ -1,4 +1,4 @@
-# System Readme (Rack + Room MQTT)
+# System Readme (Rack + Room + Building MQTT)
 
 This file is my plain‑English guide to build, run, and test both ESP32 devices,
 plus the exact MQTT subscribe/publish commands I use in HiveMQ.
@@ -9,7 +9,7 @@ plus the exact MQTT subscribe/publish commands I use in HiveMQ.
 
 ### Build the rack device (Shaun)
 Command:
-```powershell
+```powershell  
 pio run -e esp32dev
 ```
 Explanation:
@@ -113,10 +113,11 @@ https://www.hivemq.com/demos/websocket-client/
 
 ## 5) Subscribe commands (what I listen to)
 
-### Subscribe to everything for both devices
+### Subscribe to everything for all devices
 ```text
 dc/2780093K/shaun/esp32/#
 dc/5047992u/Naren/esp32/#
+dc/2780093K/shaun/building/#
 ```
 Explanation:
 - The `#` wildcard means “everything under this namespace.”
@@ -129,6 +130,9 @@ dc/2780093K/shaun/esp32/event
 dc/2780093K/shaun/esp32/telemetry
 dc/5047992u/Naren/esp32/telemetry
 dc/5047992u/Naren/esp32/alert/+
+dc/2780093K/shaun/building/status
+dc/2780093K/shaun/building/event
+dc/2780093K/shaun/building/telemetry
 ```
 Explanation:
 - `status` shows online/offline.
@@ -193,6 +197,42 @@ Explanation:
 
 ---
 
+### Building device (Sprinkler alarm)
+
+**Published topics**
+```text
+dc/2780093K/shaun/building/status
+dc/2780093K/shaun/building/event
+dc/2780093K/shaun/building/telemetry
+```
+
+**Command topic**
+```text
+dc/2780093K/shaun/building/cmd
+```
+
+**Command payloads**
+```text
+TEST
+RESET
+```
+
+**Status / presence (LWT, retained)**
+- `online` published on connect
+- `offline` published by broker if device drops
+
+**Example payloads**
+```json
+{"event":"test","value":"ON","ts":123456}
+{"event":"reset","value":"PRESSED","ts":123789}
+{"event":"alarm","value":"ON","ts":124000}
+```
+```json
+{"temp_c":31.2,"humidity_pct":45.5,"tank_pct":72,"armed":1,"test_mode":0,"alarm":0,"ts":130000}
+```
+
+---
+
 ## 7) Example: Shaun MQTT appears in Naren output
 
 This happens because the room device subscribes to Shaun's rack topics
@@ -221,3 +261,17 @@ and logs all received messages.
 
 If the rack device is not running at the same time, I will still see the
 `ON` command in HiveMQ but the rack LED won’t change.
+
+### Building quick test
+1) Run building sim and subscribe to:
+   `dc/2780093K/shaun/building/#`
+2) Press TEST button (BTN1).
+3) I expect:
+   - Event `{"event":"test","value":"ON",...}` published
+   - Alarm event `{"event":"alarm","value":"ON",...}` published
+   - Telemetry shows `test_mode: 1` and `alarm: 1` on next interval
+4) Press RESET button (BTN2).
+5) I expect:
+   - Event `{"event":"reset","value":"PRESSED",...}` published
+   - Alarm event `{"event":"alarm","value":"OFF",...}` published
+   - Telemetry shows `test_mode: 0` and `alarm: 0` on next interval
