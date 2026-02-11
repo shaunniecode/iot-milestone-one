@@ -1,384 +1,207 @@
-# ESP32 Data Center Rack Monitoring & Control Module (Wokwi + MQTT)
+# IntegratedEdgeMQTT (Milestone 2)
 
 **Author:** Shaun Richard Verghese (Student ID: 2780093K)
 
-## 1) What this project is (plain words)
+## 1) Project overview (start to finish)
 
-I’m simulating a small “rack module” inside a data centre rack using an ESP32 in
-Wokwi. In a real data centre, racks must be monitored for environment conditions,
-physical access, and abnormal operating states. When something goes wrong, a
-technician needs a clear alarm signal and a clear audit trail (events + telemetry).
+This project combines three separate ESP32 milestone builds into one integrated system:
 
-My rule for this project: every component must have a believable data-centre
-purpose, not just “a demo sensor”.
+- **Rack device (Shaun)**: monitors rack environment, door access, and power load.
+- **Room device (Naren)**: monitors room conditions and raises technician/fire alerts.
+- **Building device (Sprinkler alarm)**: monitors tank/temp and handles test/reset.
 
-## 2) Hardware used (and what each part represents)
+Milestone 1 delivered three independent devices. Milestone 2 integrates them through a shared MQTT broker so they communicate and behave as one system. MQTT is the "glue" that connects all devices by topics instead of direct wiring.
 
-### LED1 (Green) — Cooling fan status indicator (remote-controlled)
+## 2) System architecture (plain English)
 
-- LED1 simulates a rack’s cooling/fan status indicator.
-- A backend system can turn it ON/OFF via MQTT.
+- **Broker**: `broker.hivemq.com` routes messages by topic.
+- **Clients**: the three ESP32 devices plus the human tester (HiveMQ Web Client).
+- Devices **publish** status/events/telemetry to the broker.
+- Devices **subscribe** to command or status topics they care about.
+- The broker delivers messages to all subscribers.
 
-### LED2 (Alarm) — Alarm beacon (state-driven)
+## 3) Device summaries
 
-- LED2 is the “alarm light” for the rack module.
-- Key design rule I learned while debugging:
-  - I must **not** let multiple parts of the code fight over the same LED output.
-  - Each alarm source sets its own boolean state.
-  - LED2 is computed from those states in **one place**.
-- LED2 turns ON if **any** alarm source is active:
-  - `doorAlarmActive OR envAlarmActive OR powerAlarmActive`
-- LED2 turns OFF only when **all** alarm states are false.
+### Rack device (Shaun)
+- Tracks temperature, humidity, and power load.
+- Door sensor is latched until acknowledged.
+- Publishes status, events, telemetry (JSON), plus plain-text mirror topics.
+- Subscribes to LED command topics.
 
-### Button 1 (Door sensor) — Rack door open/close
+### Room device (Naren)
+- Tracks temperature, humidity, and smoke simulation.
+- Produces technician alerts and fire alarms (retained).
+- Publishes JSON plus plain-text mirrors.
+- Subscribes to command topic and to rack status/event.
+- Sends rack LED1 command on fire alarm.
 
-- Pressed = door **OPEN**
-- Released = door **CLOSED**
-- Door OPEN triggers a **latched** door alarm (stays active until acknowledged)
-- Door CLOSED does **not** clear the alarm (realistic: tech must acknowledge)
+### Building device (Sprinkler alarm)
+- Monitors tank level and temperature.
+- Test and reset buttons drive alarm state.
+- Publishes JSON plus plain-text mirrors.
+- Subscribes to `cmd` for TEST/RESET.
 
-### Button 2 (Technician ACK) — Human acknowledgement
+## 4) Build and run
 
-- Press publishes an ACK event including:
-  - my identity (`shaun/2780093K`)
-  - which alarm sources were active at the moment of ACK
-- Design choice:
-  - Button 2 clears **only** the door alarm (latched condition).
-  - Environment + power alarms are real-time conditions and should clear only
-    when the condition returns to normal.
-
-### Potentiometer (Analog) — Simulated rack power load (%)
-
-- ADC read is converted to 0–100%
-- Published in telemetry as `load_pct`
-- If `load_pct >= threshold`, the power alarm becomes active
-
-### DHT22 — Temperature + Humidity (telemetry + env alarm)
-
-- Read periodically (every 60 seconds) to avoid hammering the sensor
-- If temp/humidity exceed thresholds, env alarm becomes active
-
-## 3) Pin mapping (Wokwi wiring must match this)
-
-| Component | GPIO | Notes |
-| --- | --- | --- |
-| DHT22 DATA | GPIO4 | Use pull-up in Wokwi wiring |
-| Potentiometer (middle) | GPIO34 | ADC |
-| Button 1 (door) | GPIO14 | `INPUT_PULLDOWN` in code |
-| Button 2 (ACK) | GPIO27 | `INPUT`, assumes external pull-down in wiring |
-| LED1 | GPIO12 | — |
-| LED2 | GPIO13 | — |
-
-## 4) Alarm thresholds (demo-friendly)
-
-- `TEMP_ALARM_C` = 30.0 °C
-- `HUM_ALARM_PCT` = 70.0 %
-- `POWER_ALARM_PCT` = 80 %
-
-## 5) MQTT broker details
-
-- Host: `broker.hivemq.com`
-- Port: `1883`
-
-## 6) MQTT topic structure
-
-Base topic (device namespace):
-
-```
-dc/2780093K/shaun/esp32
-```
-
-I include:
-
-- `dc` (data centre prefix)
-- student id (`2780093K`)
-- username (`shaun`)
-- device type (`esp32`)
-
-This prevents topic collisions when multiple students/devices are used.
-
-### 6.1 Published topics (ESP32 → Broker)
-
-#### A) Status / Presence (LWT enabled)
-
-Topic:
-
-```
-dc/2780093K/shaun/esp32/status
-```
-
-Payloads:
-
-- `online` (published by ESP32 on successful MQTT connect; retained)
-- `offline` (published automatically by broker via LWT if ESP32 dies; retained)
-
-#### B) Events (instant, discrete changes)
-
-Topic:
-
-```
-dc/2780093K/shaun/esp32/event
-```
-
-Payload format: JSON
-
-Examples:
-
-```json
-{"event":"system","value":"online","ts":12345}
-{"event":"door","value":"OPEN","ts":12345}
-{"event":"alarm","value":"DOOR_ON","ts":12345}
-{"event":"alarm","value":"ENV_ON","ts":12345}
-{"event":"alarm","value":"POWER_ON","ts":12345}
-{"event":"ack","value":"shaun/2780093K ACK DOOR,ENV","ts":12345}
-```
-
-#### C) Telemetry (periodic snapshots)
-
-Topic:
-
-```
-dc/2780093K/shaun/esp32/telemetry
-```
-
-Publish interval:
-
-- Every `SENSOR_INTERVAL_MS` (60 seconds)
-
-### 6.2 Subscribed topics (Broker → ESP32)
-
-#### A) LED1 cooling fan control
-
-Topic:
-
-```
-dc/2780093K/shaun/esp32/cmd/led1
-```
-
-Payloads:
-
-- `ON`
-- `OFF`
-
-#### B) LED2 alarm control (kept for completeness)
-
-Topic:
-
-```
-dc/2780093K/shaun/esp32/cmd/led2
-```
-
-Payloads:
-
-- `ON`
-- `OFF`
-
-### 6.3 Wildcard subscription (monitor everything)
-
-Subscribe to:
-
-```
-dc/2780093K/shaun/esp32/#
-```
-
-## 7) Core design rule (why LED2 is stable)
-
-LED2 is controlled in **one place only**:
-
-- Door logic sets `doorAlarmActive` (latched)
-- DHT logic sets `envAlarmActive` (automatic)
-- Pot logic sets `powerAlarmActive` (automatic)
-
-Then:
-
-- LED2 = ON if **any** of those states are true
-
-## 8) How ACK works (and what it means)
-
-When I press Button 2:
-
-1. I publish an ACK event like:
-   - `"shaun/2780093K ACK DOOR,ENV"`
-2. I clear **only** `doorAlarmActive` (latched condition)
-3. `env` + `power` alarms remain active until conditions return to normal
-
-So:
-
-- MQTT **can** show multiple anomalies (ENV + POWER + DOOR) because transitions are
-  published as separate alarm events.
-- I **can** acknowledge multiple active alarms in one press because the ACK payload
-  lists everything active at that moment.
-- I **only clear** the DOOR alarm with ACK (by design).
-
-## 9) Running & testing (Wokwi + HiveMQ)
-
-1. Start Wokwi simulation and open Serial Monitor.
-2. In HiveMQ Web Client:
-   - Host: `broker.hivemq.com`
-   - Port: `1883`
-   - Subscribe: `dc/2780093K/shaun/esp32/#`
-
-### Test LED1
-
-- Publish to `dc/2780093K/shaun/esp32/cmd/led1` with `ON` or `OFF`.
-
-### Test door alarm
-
-- Button 1 press → `DOOR_ON`, LED2 on (latched)
-- Button 2 press → `DOOR_OFF`, LED2 off (if no other alarms)
-
-### Test env/power alarms
-
-- Change temp/humidity/pot and wait for the next 60s sensor interval for alarm
-  transitions (`ENV_ON/OFF`, `POWER_ON/OFF`).
-
-## 11) Room device + multi-build workflow
-
-This repo now includes three builds:
-
-- Rack device (Shaun): `env:esp32dev`
-- Room device (Naren): `env:room`
-- Building device (Sprinkler alarm): `env:building`
-
-### Build all firmwares (PlatformIO)
-
+### Build firmware (PlatformIO)
 ```bash
 pio run -e esp32dev
 pio run -e room
 pio run -e building
 ```
 
-### Switch Wokwi config (rack vs room vs building)
-
-Wokwi uses `diagram.json` + `wokwi.toml`. Use the helper to switch:
-
+### Switch Wokwi config
 ```bat
 scripts\switch-wokwi.bat rack
 scripts\switch-wokwi.bat room
 scripts\switch-wokwi.bat building
 ```
 
-If you want multiple simulations running at the same time, open multiple VS Code
-windows on multiple copies of the repo.
+## 5) MQTT broker settings
 
-## 12) HiveMQ subscriptions and test publishes
+- Host: `broker.hivemq.com`
+- Port: `1883` (MQTT TCP)
 
-### Subscribe (everything for each device)
-
-```text
-dc/2780093K/shaun/esp32/#
-dc/5047992u/Naren/esp32/#
-dc/2780093K/shaun/building/#
+Web client (HiveMQ):
+```
+https://www.hivemq.com/demos/websocket-client/
 ```
 
-### Subscribe (minimal)
+## 6) Topics (complete list)
 
-```text
-dc/2780093K/shaun/esp32/status
-dc/2780093K/shaun/esp32/event
-dc/2780093K/shaun/esp32/telemetry
-dc/5047992u/Naren/esp32/telemetry
-dc/5047992u/Naren/esp32/alert/+
-dc/2780093K/shaun/building/status
-dc/2780093K/shaun/building/event
-dc/2780093K/shaun/building/telemetry
-```
+### Rack publishes (JSON + plain-text mirrors)
+- `dc/2780093K/shaun/esp32/status` (online/offline)
+- `dc/2780093K/shaun/esp32/event`
+- `dc/2780093K/shaun/esp32/event_text`
+- `dc/2780093K/shaun/esp32/telemetry`
+- `dc/2780093K/shaun/esp32/telemetry_text`
 
-### Example: Shaun MQTT appears in Naren output
+### Rack subscribes
+- `dc/2780093K/shaun/esp32/cmd/led1`
+- `dc/2780093K/shaun/esp32/cmd/led2`
 
-This happens because the room device subscribes to Shaun's rack topics
-(`dc/2780093K/shaun/esp32/status` and `dc/2780093K/shaun/esp32/event`)
-and logs all received messages.
+### Room publishes (JSON + plain-text mirrors)
+- `dc/5047992u/Naren/esp32/telemetry`
+- `dc/5047992u/Naren/esp32/telemetry_text`
+- `dc/5047992u/Naren/esp32/event`
+- `dc/5047992u/Naren/esp32/event_text`
+- `dc/5047992u/Naren/esp32/alert/Technician`
+- `dc/5047992u/Naren/esp32/alert/Technician_text`
+- `dc/5047992u/Naren/esp32/alert/Fire`
+- `dc/5047992u/Naren/esp32/alert/Fire_text`
+- `dc/5047992u/Naren/esp32/LWT`
+- `dc/2780093K/shaun/esp32/cmd/led1` (room -> rack command on fire)
 
-```text
-[MQTT TX] dc/5047992u/Naren/esp32/event : {"event":"rack_status","value":0,"ts":150}
-[1970-01-01 08:02:30] [MQTT RX] dc/2780093K/shaun/esp32/event : {"event":"system","value":"online","ts":2534588}
-[1970-01-01 08:02:31] [SENSOR] T:21.7C H:49.0% Smoke:0%
-```
-
-### Publish test commands
-
-Rack LED1 control:
-
-```text
-Topic: dc/2780093K/shaun/esp32/cmd/led1
-Payload: ON
-```
-
-Rack LED2 control:
-
-```text
-Topic: dc/2780093K/shaun/esp32/cmd/led2
-Payload: OFF
-```
-
-Room commands (JSON):
-
-```json
-{"led":"green","state":1}
-{"led":"yellow","state":0}
-{"led":"red","state":1}
-{"clear_fire":1}
-{"request_telemetry":1}
-{"request_status":1}
-```
-
-Room command topic:
-
-```text
-dc/5047992u/Naren/esp32/command
-```
-
-Building published topics:
-
-```text
-dc/2780093K/shaun/building/status
-dc/2780093K/shaun/building/event
-dc/2780093K/shaun/building/telemetry
-```
-
-Building command topic:
-
-```text
-dc/2780093K/shaun/building/cmd
-```
-
-Building command payloads:
-```text
-TEST
-RESET
-```
-
-Example building payloads:
-```json
-{"event":"test","value":"ON","ts":123456}
-{"event":"reset","value":"PRESSED","ts":123789}
-{"event":"alarm","value":"ON","ts":124000}
-```
-```json
-{"temp_c":31.2,"humidity_pct":45.5,"tank_pct":72,"armed":1,"test_mode":0,"alarm":0,"ts":130000}
-```
-
-## 10) Quick reference
-
-**Broker**
-
-- `broker.hivemq.com:1883`
-
-**Wildcard subscribe**
-
-- `dc/2780093K/shaun/esp32/#`
-
-**Publish (cooling LED1)**
-
-- Topic: `dc/2780093K/shaun/esp32/cmd/led1`
-- Payload: `ON` / `OFF`
-
-**Published topics**
-
+### Room subscribes
+- `dc/5047992u/Naren/esp32/command`
 - `dc/2780093K/shaun/esp32/status`
 - `dc/2780093K/shaun/esp32/event`
-- `dc/2780093K/shaun/esp32/telemetry`
+
+### Building publishes (JSON + plain-text mirrors)
 - `dc/2780093K/shaun/building/status`
 - `dc/2780093K/shaun/building/event`
+- `dc/2780093K/shaun/building/event_text`
 - `dc/2780093K/shaun/building/telemetry`
+- `dc/2780093K/shaun/building/telemetry_text`
+
+### Building subscribes
+- `dc/2780093K/shaun/building/cmd`
+
+## 7) Quick test checklist
+
+1. Subscribe in HiveMQ:
+   - `dc/2780093K/shaun/esp32/#`
+   - `dc/5047992u/Naren/esp32/#`
+   - `dc/2780093K/shaun/building/#`
+2. Publish test commands:
+   - Rack LED1: topic `dc/2780093K/shaun/esp32/cmd/led1`, payload `ON`
+   - Room LED: topic `dc/5047992u/Naren/esp32/command`, payload `green_on`
+   - Building test: topic `dc/2780093K/shaun/building/cmd`, payload `TEST`
+
+## 8) Hardware wiring (GPIO mapping)
+
+### Rack device (Shaun)
+| Component | GPIO | Notes |
+| --- | --- | --- |
+| DHT22 DATA | GPIO4 | DHTPIN |
+| Potentiometer (middle) | GPIO34 | POT_PIN, ADC |
+| Button 1 (door) | GPIO14 | BTN1_PIN, `INPUT_PULLDOWN` |
+| Button 2 (ACK) | GPIO27 | BTN2_PIN, external pull-down |
+| LED1 (cooling) | GPIO12 | LED1_PIN |
+| LED2 (alarm) | GPIO13 | LED2_PIN |
+
+### Room device (Naren)
+| Component | GPIO | Notes |
+| --- | --- | --- |
+| DHT22 DATA | GPIO15 | DHTPIN |
+| Potentiometer (smoke) | GPIO34 | POT_PIN, ADC |
+| LED Green | GPIO12 | LED_GREEN |
+| LED Yellow | GPIO14 | LED_YELLOW |
+| LED Red | GPIO13 | LED_RED |
+| Button ACK | GPIO27 | BTN_ACK, `INPUT_PULLDOWN` |
+| Button Fire Reset | GPIO26 | BTN_FIRE, `INPUT_PULLDOWN` |
+
+### Building device (Sprinkler alarm)
+| Component | GPIO | Notes |
+| --- | --- | --- |
+| LED Green (armed) | GPIO12 | LED_GREEN |
+| LED Red (alarm) | GPIO13 | LED_RED |
+| Button TEST | GPIO14 | BTN_TEST, pressed = HIGH |
+| Button RESET | GPIO27 | BTN_RESET, pressed = HIGH |
+| Potentiometer (tank) | GPIO34 | POT_PIN, ADC |
+| DHT22 DATA | GPIO4 | DHT_PIN |
+
+## 9) Design rationale (key logic)
+
+### Rack alarm logic
+- LED2 is state-driven to avoid conflicting writes.
+- Door alarm is latched until ACK.
+- Env + power alarms auto-clear when conditions normalize.
+
+### Room alert logic
+- Technician alert uses consecutive reads to avoid false positives.
+- Fire alert is retained and only cleared when safe.
+- Room can command rack LED1 during fire for cross-device signaling.
+
+### Building alarm logic
+- Test button forces alarm on.
+- Reset clears alarm/test.
+- Auto alarm if temperature crosses threshold.
+
+## 10) Troubleshooting
+
+### MQTT
+- If no messages appear, confirm you subscribed to the correct topic.
+- Use wildcards like `dc/2780093K/shaun/esp32/#` to see everything.
+- If LWT shows `offline`, reconnect the simulator or broker.
+
+### Wokwi
+- After switching configs with `scripts\switch-wokwi.bat`, restart the sim.
+- Ensure `diagram.json` and `wokwi.toml` match the intended device.
+
+### Sensors
+- DHT can fail on first read; wait for the next interval.
+- Pot values are analog and may need adjustment in Wokwi.
+
+## 11) Test cases / expected outputs
+
+### Rack
+- Door open -> `event` shows `DOOR_ON`, LED2 ON (latched).
+- ACK button -> `event` shows `DOOR_OFF`, LED2 OFF if no other alarms.
+- Temp/humidity high -> `event` shows `ENV_ON`, LED2 ON.
+
+### Room
+- Out-of-range temp/humidity/smoke -> technician alert published.
+- Fire threshold exceeded -> fire alert retained, rack LED1 command `ON`.
+- `green_on` command -> green LED turns ON and event logs LED change.
+
+### Building
+- TEST command/button -> event `test ON`, alarm ON.
+- RESET command/button -> event `reset PRESSED`, alarm OFF.
+- Temp threshold exceeded -> event `alarm ON`.
+
+## 12) Documentation map
+
+- `systemreadme.md` — step-by-step usage + MQTT commands
+- `mqttreadme.md` — detailed MQTT explanation and relationships
+- `diagram.*.json` + `wokwi.*.toml` — Wokwi configs

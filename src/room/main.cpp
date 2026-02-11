@@ -40,10 +40,14 @@ const char* DEVICE_TYPE= "esp32";
 
 // MQTT Topics (room-level)
 const char* topicTelemetry   = "dc/5047992u/Naren/esp32/telemetry";
+const char* topicTelemetryText = "dc/5047992u/Naren/esp32/telemetry_text";
 const char* topicEvent       = "dc/5047992u/Naren/esp32/event";
+const char* topicEventText   = "dc/5047992u/Naren/esp32/event_text";
 const char* topicCommand     = "dc/5047992u/Naren/esp32/command";
 const char* topicTechAlert   = "dc/5047992u/Naren/esp32/alert/Technician";
+const char* topicTechAlertText = "dc/5047992u/Naren/esp32/alert/Technician_text";
 const char* topicFireAlert   = "dc/5047992u/Naren/esp32/alert/Fire";
+const char* topicFireAlertText = "dc/5047992u/Naren/esp32/alert/Fire_text";
 const char* topicLWT         = "dc/5047992u/Naren/esp32/LWT";
 
 // Rack-level topics (different owner - subscribe/publish selectively)
@@ -160,6 +164,21 @@ void publishJson(const char* topic, const char* payload, bool retain = false) {
 }
 
 /**
+ * Publish plain-text payload to MQTT topic
+ */
+void publishText(const char* topic, const char* payload, bool retain = false) {
+  if (client.connected()) {
+    client.publish(topic, payload, retain);
+    Serial.print("[MQTT TX] ");
+    Serial.print(topic);
+    Serial.print(" : ");
+    Serial.println(payload);
+  } else {
+    Serial.println("[MQTT] Not connected, message dropped");
+  }
+}
+
+/**
  * Publish event with name, value, and timestamp
  */
 void publishEvent(const char* name, int value) {
@@ -169,6 +188,12 @@ void publishEvent(const char* name, int value) {
            "{\"event\":\"%s\",\"value\":%d,\"ts\":%ld}",
            name, value, t);
   publishJson(topicEvent, payload, false);
+
+  char textPayload[128];
+  snprintf(textPayload, sizeof(textPayload),
+           "event=%s value=%d ts=%ld",
+           name, value, t);
+  publishText(topicEventText, textPayload, false);
 }
 
 /**
@@ -233,6 +258,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     msg += (char)payload[i];
   }
   msg.trim();
+  String msgLower = msg;
+  msgLower.toLowerCase();
 
   printTimestamp();
   Serial.print("[MQTT RX] ");
@@ -242,7 +269,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
   // Rack-level status + alarms
   if (String(topic) == rackTopicStatus) {
-    int online = (msg.indexOf("online") >= 0) ? 1 : 0;
+    int online = (msgLower.indexOf("online") >= 0) ? 1 : 0;
     publishEvent("rack_status", online);
     return;
   }
@@ -264,20 +291,67 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     return;
   }
 
+  // Plain-text commands (case-insensitive)
+  if (msgLower == "green_on") {
+    digitalWrite(LED_GREEN, HIGH);
+    publishEvent("led_green_set", 1);
+  } else if (msgLower == "green_off") {
+    digitalWrite(LED_GREEN, LOW);
+    publishEvent("led_green_set", 0);
+  } else if (msgLower == "yellow_on") {
+    digitalWrite(LED_YELLOW, HIGH);
+    publishEvent("led_yellow_set", 1);
+  } else if (msgLower == "yellow_off") {
+    digitalWrite(LED_YELLOW, LOW);
+    publishEvent("led_yellow_set", 0);
+  } else if (msgLower == "red_on") {
+    digitalWrite(LED_RED, HIGH);
+    publishEvent("led_red_set", 1);
+  } else if (msgLower == "red_off") {
+    digitalWrite(LED_RED, LOW);
+    publishEvent("led_red_set", 0);
+  } else if (msgLower == "clear_fire") {
+    if (!fireAlarmActive) {
+      publishEvent("remote_fire_clear_no_alarm", 0);
+    } else {
+      float curTemp = dht.readTemperature();
+      if (!isnan(curTemp) && curTemp <= (FIRE_THRESH - FIRE_HYSTERESIS)) {
+        clearFireAlarmRetained(curTemp);
+        publishEvent("remote_fire_clear_success", (int)curTemp);
+      } else {
+        publishEvent("remote_fire_clear_failed_temp", isnan(curTemp) ? -999 : (int)curTemp);
+      }
+    }
+  } else if (msgLower == "request_telemetry") {
+    publishTelemetry(lastKnownTemp, lastKnownHum, lastKnownPot);
+    publishEvent("telemetry_requested", 1);
+  } else if (msgLower == "request_status") {
+    char payload[256];
+    time_t t = time(NULL);
+    snprintf(payload, sizeof(payload),
+             "{\"tech_latched\":%d,\"fire_active\":%d,\"wifi_rssi\":%d,\"uptime\":%lu,\"ts\":%ld}",
+             techAlertLatched ? 1 : 0,
+             fireAlarmActive ? 1 : 0,
+             WiFi.RSSI(),
+             millis() / 1000,
+             t);
+    publishJson(topicEvent, payload, false);
+  }
+
   // LED control commands
   // Format: {"led":"green","state":1} or {"led":"green","state":0}
-  if (msg.indexOf("\"led\"") >= 0) {
-    bool state = (msg.indexOf("\"state\":1") >= 0);
+  if (msgLower.indexOf("\"led\"") >= 0) {
+    bool state = (msgLower.indexOf("\"state\":1") >= 0);
 
-    if (msg.indexOf("\"green\"") >= 0) {
+    if (msgLower.indexOf("\"green\"") >= 0) {
       digitalWrite(LED_GREEN, state ? HIGH : LOW);
       publishEvent("led_green_set", state ? 1 : 0);
     }
-    if (msg.indexOf("\"yellow\"") >= 0) {
+    if (msgLower.indexOf("\"yellow\"") >= 0) {
       digitalWrite(LED_YELLOW, state ? HIGH : LOW);
       publishEvent("led_yellow_set", state ? 1 : 0);
     }
-    if (msg.indexOf("\"red\"") >= 0) {
+    if (msgLower.indexOf("\"red\"") >= 0) {
       digitalWrite(LED_RED, state ? HIGH : LOW);
       publishEvent("led_red_set", state ? 1 : 0);
     }
@@ -285,7 +359,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
   // Remote fire clear command
   // Format: {"clear_fire":1}
-  if (msg.indexOf("\"clear_fire\"") >= 0 && msg.indexOf(":1") >= 0) {
+  if (msgLower.indexOf("\"clear_fire\"") >= 0 && msgLower.indexOf(":1") >= 0) {
     if (!fireAlarmActive) {
       publishEvent("remote_fire_clear_no_alarm", 0);
     } else {
@@ -302,14 +376,14 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
   // Request immediate telemetry
   // Format: {"request_telemetry":1}
-  if (msg.indexOf("\"request_telemetry\"") >= 0 && msg.indexOf(":1") >= 0) {
+  if (msgLower.indexOf("\"request_telemetry\"") >= 0 && msgLower.indexOf(":1") >= 0) {
     publishTelemetry(lastKnownTemp, lastKnownHum, lastKnownPot);
     publishEvent("telemetry_requested", 1);
   }
 
   // Request status
   // Format: {"request_status":1}
-  if (msg.indexOf("\"request_status\"") >= 0 && msg.indexOf(":1") >= 0) {
+  if (msgLower.indexOf("\"request_status\"") >= 0 && msgLower.indexOf(":1") >= 0) {
     char payload[256];
     time_t t = time(NULL);
     snprintf(payload, sizeof(payload),
@@ -435,6 +509,16 @@ void publishTelemetry(float temp, float hum, int potVal) {
            t);
 
   publishJson(topicTelemetry, payload, false);
+
+  char textPayload[200];
+  snprintf(textPayload, sizeof(textPayload),
+           "temp=%.2f hum=%.2f pot=%d smoke_pct=%d tech_latched=%d fire_active=%d wifi_rssi=%d ts=%ld",
+           temp, hum, potVal, smokePercent,
+           techAlertLatched ? 1 : 0,
+           fireAlarmActive ? 1 : 0,
+           WiFi.RSSI(),
+           t);
+  publishText(topicTelemetryText, textPayload, false);
 }
 
 // ============================================================================
@@ -463,6 +547,12 @@ void publishTechAlert(float temp, float hum, const char* reason) {
 
   publishJson(topicTechAlert, payload, false);
 
+  char textPayload[200];
+  snprintf(textPayload, sizeof(textPayload),
+           "level=warning temp=%.2f hum=%.2f reason=%s ts=%ld",
+           temp, hum, reason, t);
+  publishText(topicTechAlertText, textPayload, false);
+
   printTimestamp();
   Serial.print("[ALERT] Technician alert triggered: ");
   Serial.println(reason);
@@ -481,6 +571,12 @@ void publishTechCleared(float temp, float hum) {
            temp, hum, t);
 
   publishJson(topicTechAlert, payload, false);
+
+  char textPayload[200];
+  snprintf(textPayload, sizeof(textPayload),
+           "level=cleared temp=%.2f hum=%.2f reason=tech_acknowledged ts=%ld",
+           temp, hum, t);
+  publishText(topicTechAlertText, textPayload, false);
 
   techAlertLatched = false;
   consecutiveOutCount = 0;
@@ -506,6 +602,12 @@ void publishFireAlarm(float temp) {
 
   publishJson(topicFireAlert, payload, true);  // RETAINED
 
+  char textPayload[200];
+  snprintf(textPayload, sizeof(textPayload),
+           "level=critical temp=%.2f reason=fire_detected ts=%ld",
+           temp, t);
+  publishText(topicFireAlertText, textPayload, true);
+
   // Signal rack cooling indicator
   publishJson(rackCmdLed1, "ON", false);
 
@@ -528,6 +630,12 @@ void clearFireAlarmRetained(float temp) {
            temp, t);
 
   publishJson(topicFireAlert, payload, true);  // Overwrite retained
+
+  char textPayload[200];
+  snprintf(textPayload, sizeof(textPayload),
+           "level=cleared temp=%.2f reason=fire_cleared ts=%ld",
+           temp, t);
+  publishText(topicFireAlertText, textPayload, true);
 
   // Clear rack cooling indicator
   publishJson(rackCmdLed1, "OFF", false);

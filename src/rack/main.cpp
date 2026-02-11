@@ -288,7 +288,9 @@ String baseTopic;
 String cmdLed1Topic;
 String cmdLed2Topic;
 String eventTopic;
+String eventTextTopic;
 String telemetryTopic;
+String telemetryTextTopic;
 String statusTopic;   // I use this for MQTT “online/offline” presence (LWT).
 
 
@@ -344,9 +346,11 @@ void setupTopics() {
 
   // Event publishing topic:
   eventTopic = baseTopic + "/event";
+  eventTextTopic = baseTopic + "/event_text";
 
   // Telemetry publishing topic:
   telemetryTopic = baseTopic + "/telemetry";
+  telemetryTextTopic = baseTopic + "/telemetry_text";
   statusTopic = baseTopic + "/status";  // I publish online/offline presence here.
 
 }
@@ -369,6 +373,12 @@ void publishEvent(const char* name, const char* value) {
   char buf[256];
   size_t n = serializeJson(doc, buf);
   mqtt.publish(eventTopic.c_str(), buf, n);
+
+  // Also publish a plain-text mirror for quick human reading.
+  char textBuf[256];
+  snprintf(textBuf, sizeof(textBuf), "event=%s value=%s ts=%lu",
+           name, value, (unsigned long)millis());
+  mqtt.publish(eventTextTopic.c_str(), textBuf);
 }
 
 
@@ -395,6 +405,15 @@ void publishTelemetry(float tempC, float hum, int potPct) {
   char buf[256];
   size_t n = serializeJson(doc, buf);
   mqtt.publish(telemetryTopic.c_str(), buf, n);
+
+  // Also publish a plain-text mirror for quick human reading.
+  char textBuf[256];
+  snprintf(textBuf, sizeof(textBuf),
+           "temp_c=%.1f humidity_pct=%.1f load_pct=%d led1=%d led2=%d ts=%lu",
+           tempC, hum, potPct,
+           digitalRead(LED1_PIN), digitalRead(LED2_PIN),
+           (unsigned long)millis());
+  mqtt.publish(telemetryTextTopic.c_str(), textBuf);
 }
 
 

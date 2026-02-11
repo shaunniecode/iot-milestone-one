@@ -42,7 +42,9 @@ const char* DEVICE_TYPE= "building";
 String baseTopic;
 String statusTopic;
 String eventTopic;
+String eventTextTopic;
 String telemetryTopic;
+String telemetryTextTopic;
 String cmdTopic;
 
 WiFiClient espClient;
@@ -69,7 +71,9 @@ void setupTopics() {
   baseTopic = String(DC_PREFIX) + "/" + STUDENT_ID + "/" + USERNAME + "/" + DEVICE_TYPE;
   statusTopic = baseTopic + "/status";
   eventTopic = baseTopic + "/event";
+  eventTextTopic = baseTopic + "/event_text";
   telemetryTopic = baseTopic + "/telemetry";
+  telemetryTextTopic = baseTopic + "/telemetry_text";
   cmdTopic = baseTopic + "/cmd";
 }
 
@@ -79,6 +83,12 @@ void publishEvent(const char* name, const char* value) {
            "{\"event\":\"%s\",\"value\":\"%s\",\"ts\":%lu}",
            name, value, millis());
   mqtt.publish(eventTopic.c_str(), payload);
+
+  char textPayload[192];
+  snprintf(textPayload, sizeof(textPayload),
+           "event=%s value=%s ts=%lu",
+           name, value, (unsigned long)millis());
+  mqtt.publish(eventTextTopic.c_str(), textPayload);
 }
 
 void publishTelemetry(float tempC, float hum, int potPct) {
@@ -89,6 +99,13 @@ void publishTelemetry(float tempC, float hum, int potPct) {
            tempC, hum, potPct,
            armed ? 1 : 0, testMode ? 1 : 0, alarmActive ? 1 : 0, millis());
   mqtt.publish(telemetryTopic.c_str(), payload);
+
+  char textPayload[220];
+  snprintf(textPayload, sizeof(textPayload),
+           "temp_c=%.2f humidity_pct=%.2f tank_pct=%d armed=%d test_mode=%d alarm=%d ts=%lu",
+           tempC, hum, potPct,
+           armed ? 1 : 0, testMode ? 1 : 0, alarmActive ? 1 : 0, (unsigned long)millis());
+  mqtt.publish(telemetryTextTopic.c_str(), textPayload);
 }
 
 void connectWiFi() {
